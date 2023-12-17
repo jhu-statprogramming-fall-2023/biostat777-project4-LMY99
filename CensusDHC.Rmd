@@ -1,36 +1,96 @@
 ---
-title: "Untitled"
+title: "US Census Demographic and Housing Characteristics"
 output: 
   flexdashboard::flex_dashboard:
     orientation: columns
     vertical_layout: fill
+runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
+if(!require(flexdashboard)) install.packages('flexdashboard')
 library(flexdashboard)
+if(!require(tidycensus)) install.packages('tidycensus')
+library(tidycensus)
+if(!require(tidyverse)) install.packages('tidyverse')
+library(tidyverse)
+
+census_api_key("342b3eab7e3c57d07336dab5283b0d2746c9b78a")
 ```
 
-Column {data-width=650}
------------------------------------------------------------------------
+Column {.tabset}
+-------------------------------------
+   
+### About
 
-### Chart A
+This dashboard uses data from TidyCensus to show the age distribution across the regions in the US, e.g. which regions has the highest and lowest age, in order to demonstrate the difference(if any) between age distribution of male and female citizens, and to present the tenure of household(i.e. occupied by owner or renter) across different age ranges of householder.
+
+Link to original data: The data is obtained through TidyCensus API. 
+
+### Loading the Data
+
+The data can be downloaded through the following code. The API key can be obtained through directions on <https://walker-data.com/tidycensus/articles/basic-usage.html>, and the link and description is on <https://www.census.gov/data/tables/2023/dec/2020-census-dhc.html>.
+
+```{r, eval=FALSE, message=FALSE, echo=TRUE}
+if(!dir.exists('data')) 
+  invisible(system("mkdir data"))
+tenure_owner20 <- get_decennial(geography = "state", 
+                       variables = sapply(
+                         c(3:11),
+                         FUN=function(x) sprintf("H13_%03dN",x)
+                       ),
+                       year = 2020,
+                       sumfile = "dhc",
+                       output = "wide")
+tenure_renter20 <- get_decennial(geography = "state", 
+                       variables = sapply(
+                         c(13:21),
+                         FUN=function(x) sprintf("H13_%03dN",x)
+                       ),
+                       year = 2020,
+                       sumfile = "dhc",
+                       output = "wide")
+if(!file.exists('./data/tenure_owner20.csv'))
+write.csv(tenure_owner20,file='./data/tenure_owner20.csv')
+if(!file.exists('./data/tenure_renter20.csv'))
+write.csv(tenure_renter20,file='./data/tenure_renter20.csv')
+```
+
+```{r, echo=TRUE}
+# Read the data from local file after they are saved
+tenure_renter20 <- read.csv('./data/tenure_renter20.csv',row.names = 1)
+tenure_owner20 <- read.csv('./data/tenure_owner20.csv',row.names = 1)
+```
+ 
+### The Data
 
 ```{r}
-
+# Clean tenure status data
+library(scales)
+lower <- c(15,25,35,45,55,60,65,75,85)
+upper <- c(24,34,44,54,59,64,74,84,+Inf)
+generate_name_owner <- function(x){
+  idx <-  x %>% str_sub(-4,-2) %>% as.integer() - 2
+  return(paste(lower[idx],"-",ifelse(is.infinite(upper[idx]),"",upper[idx]),sep=''))
+}
+generate_name_renter <- function(x){
+  idx <-  x %>% str_sub(-4,-2) %>% as.integer() - 12
+  return(paste(lower[idx],"-",ifelse(is.infinite(upper[idx]),"",upper[idx]),sep=''))
+}
+tenure_owner20_clean <- tenure_owner20 %>%
+  rename_with(generate_name_owner, starts_with("H13")) %>%
+  rename(region=NAME) %>%
+  mutate(tenure="Owner")
+tenure_renter20_clean <- tenure_renter20 %>%
+  rename_with(generate_name_renter, starts_with("H13")) %>%
+  rename(region=NAME) %>%
+  mutate(tenure="Renter")
+tenures <- rbind(tenure_owner20_clean, tenure_renter20_clean)
+DT::datatable(
+  select(tenures,-GEOID), caption="The data originates from the US 2020 Census Demographic and Housing Characteristics File, and the variables used are all state-level ones, including the number of households occupied by owner and renter, grouped by age range of householder.")
 ```
 
-Column {data-width=350}
------------------------------------------------------------------------
-
-### Chart B
+### Chart 5
 
 ```{r}
-
 ```
-
-### Chart C
-
-```{r}
-
-```
-
