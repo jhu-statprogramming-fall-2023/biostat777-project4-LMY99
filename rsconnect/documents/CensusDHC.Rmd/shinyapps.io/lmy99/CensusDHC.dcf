@@ -1,0 +1,12 @@
+name: CensusDHC
+title: CensusDHC
+username: lmy99
+account: lmy99
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 10815966
+bundleId: 8059142
+url: https://lmy99.shinyapps.io/CensusDHC/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
