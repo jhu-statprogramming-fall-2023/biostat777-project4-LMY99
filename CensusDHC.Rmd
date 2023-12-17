@@ -14,6 +14,7 @@ if(!require(tidycensus)) install.packages('tidycensus')
 library(tidycensus)
 if(!require(tidyverse)) install.packages('tidyverse')
 library(tidyverse)
+library(shiny)
 
 census_api_key("342b3eab7e3c57d07336dab5283b0d2746c9b78a")
 ```
@@ -23,13 +24,15 @@ Column {.tabset}
    
 ### About
 
-This dashboard uses data from TidyCensus to show the age distribution across the regions in the US, e.g. which regions has the highest and lowest age, in order to demonstrate the difference(if any) between age distribution of male and female citizens, and to present the tenure of household(i.e. occupied by owner or renter) across different age ranges of householder.
+This dashboard uses data from TidyCensus to  to present the tenure of household(i.e. occupied by owner or renter) across different age ranges of householder and examine whether there are any differences of household tenure across different age ranges.
 
 Link to original data: The data is obtained through TidyCensus API. 
 
 ### Loading the Data
 
-The data can be downloaded through the following code. The API key can be obtained through directions on <https://walker-data.com/tidycensus/articles/basic-usage.html>, and the link and description is on <https://www.census.gov/data/tables/2023/dec/2020-census-dhc.html>.
+#### Downloading the data
+
+The data can be downloaded through the following code. The API key can be obtained through directions on <https://walker-data.com/tidycensus/articles/basic-usage.html>, and the link and description is on <https://www.census.gov/data/tables/2023/dec/2020-census-dhc.html>. Here is the reproduceable code.
 
 ```{r, eval=FALSE, message=FALSE, echo=TRUE}
 if(!dir.exists('data')) 
@@ -56,12 +59,15 @@ if(!file.exists('./data/tenure_renter20.csv'))
 write.csv(tenure_renter20,file='./data/tenure_renter20.csv')
 ```
 
+#### Loading the data from file
+
 ```{r, echo=TRUE}
 # Read the data from local file after they are saved
 tenure_renter20 <- read.csv('./data/tenure_renter20.csv',row.names = 1)
 tenure_owner20 <- read.csv('./data/tenure_owner20.csv',row.names = 1)
 ```
- 
+
+
 ### The Data
 
 ```{r}
@@ -90,7 +96,89 @@ DT::datatable(
   select(tenures,-GEOID), caption="The data originates from the US 2020 Census Demographic and Housing Characteristics File, and the variables used are all state-level ones, including the number of households occupied by owner and renter, grouped by age range of householder.")
 ```
 
-### Chart 5
+### Analysis
+
+To examine the difference of distribution of households of those occupied by owner and those occupied by renters, we first calculate the owner-to-renter count ratio for each state and each age group and plot histograms for the ratio for each age group. These distributions are examined to determine if the owner-to-renter ratio differs between age groups.
+
+We also applied statistical analysis, namely, the chi-square test, on each state to determine the states that has shown significant difference between the owner-to-renter count ratio of different age groups. 
+
+```{r, echo=TRUE}
+regions <- unique(tenures$region)
+names(regions) <- regions
+ratios <- map_dfr(
+  regions,
+  function(x){
+    tenure_owner20_clean %>% filter(region==x) %>%
+      select(contains('-')) /
+    tenure_renter20_clean %>% filter(region==x) %>%
+      select(contains('-'))
+    },
+  .id="region"
+)
+ratio_plot <- ratios %>% gather("Age","Ratio",-region) %>%
+  ggplot(aes(x=Ratio)) +
+  geom_histogram(binwidth=.25) +
+  facet_wrap(vars(Age),3,3) +
+  geom_vline(xintercept=1, linetype='dashed') +
+  xlab("Owner-to-renter Count Ratio") + ylab("Frequency") +
+  labs(title="Histogram of Owner-to-renter count ratio of households",
+       subtitle="Grouped by age of householders",
+       caption="Used state-level data")
+
+states <- unique(tenures$region)
+p_values <- sapply(states, function(x)
+tenures %>% filter(region==x) %>%
+  select(contains('-')) %>%
+  chisq.test() %>%
+  .$p.value
+)
+
+```
+
+### Owner-Renter Ratio
 
 ```{r}
+renderPlot(
+ratio_plot
+)
 ```
+
+### Interactive Graph
+
+```{r}
+selectInput("Occupancy","Occupied by:",c("Owner","Renter"),selected="Owner")
+```
+
+```{r}
+renderPlot(
+tenures %>% gather("Age","Counts",contains('-')) %>%
+  filter(tenure==input$Occupancy) %>%
+  mutate(Age=as_factor(Age)) %>%
+  ggplot(aes(x=Age,y=Counts,group=region)) +
+  geom_line() +
+  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+              labels = trans_format("log10", math_format(10^.x))) +
+  xlab("Age Range") + ylab("Number of Households") +
+  labs(title="Number of households for different age range of householders",
+       subtitle=sprintf("Occupied by %s", input$Occpancy),
+       caption="Each line represent a region in the US"),
+width=800, height=600
+)
+```
+
+### Interactive Data Frame
+```{r}
+selectInput("AgeRange","Age Range of Householder",
+            tenures %>% select(contains('-')) %>% colnames(),
+)
+DT::renderDT(
+tenures %>% 
+  select(c("region",input$AgeRange, "tenure")) %>%
+  pivot_wider(id_cols='region',names_from='tenure',values_from=input$AgeRange) %>%
+  as.data.frame()
+)
+```
+
+### Demo Video
+
+<iframe src="https://player.vimeo.com/video/895617079?badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" style="position:absolute;top:0;left:0;width:100%;height:100%;" title="Shiny Dashboard using US Census Data"></iframe>
